@@ -32,6 +32,8 @@ app.use(bodyparser.json());
 app.engine('handlebars', exphbs());
 app.set('view engine', 'handlebars');
 app.use(express.static(path.join(__dirname, 'puplic')));
+app.use(passport.initialize());
+app.use(passport.session());
 app.use(session({
     secret: 'keyboard cat',
     resave: false,
@@ -40,16 +42,44 @@ app.use(session({
 app.use(flash());
         
        //config passport
-       passport.use(new LocalStrategy(
-        function(email, password, done) {
-          User.findOne({ usernamefiled : email }, function (err, user) {
-            if (err) { return done(err); }
-            if (!user) { return done(null, false); }
-            if (!user.verifyPassword(password)) { return done(null, false); }
-            return done(null, user);
-          });
-        }
-      ));
+       passport.use(new LocalStrategy({usernameField: 'email'}, (email, password, done) => {
+        console.log("enter passport")
+        // Match user
+        User.findOne({
+          email:email
+        }).then(user => {
+          console.log("user searched")
+          if(!user){
+            console.log("no user")
+    
+            return done(null, false, {message: 'No User Found'});
+          }
+    
+          // Match password
+          bcrypt.compare(password, user.password, (err, isMatch) => {
+            if(err) throw err;
+            if(isMatch){
+              return done(null, user);
+            } else {
+              console.log("incorrect pass")
+    
+              return done(null, false, {message: 'Password Incorrect'});
+            }
+          })
+        })
+      }));
+
+      passport.serializeUser(function(user, done) {
+        done(null, user.id);
+      });
+    
+      passport.deserializeUser(function(id, done) {
+        User.findById(id, function(err, user) {
+          done(err, user);
+        });
+      });
+    
+    
      
 
         //routes
@@ -66,12 +96,20 @@ app.use(flash());
             res.render('user/login');
         });
         //login
-        app.post('/user/login',passport.authenticate('local', { successRedirect: '/about',
-        failureRedirect: '/user/login', failureFlash: true 
+       
+        app.post('/user/login', (req, res, next) => {
+            console.log("entered post login")
+            console.debug(req.body)
+            passport.authenticate('local', {
+              successRedirect:'../user/about',
+              failureRedirect: '/user/login',
+              failureMessage:true,
+              failureFlash: true
+            })(req, res, next);
+          },(req,res,nexr)=>{
+            req.flash('error_msg', 'invalid user name or password');
+          });
 
-        
-     })
-);
         //regestration
         app.post('/user/register',(req,res)=>{
             let errors=[];
